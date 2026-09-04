@@ -1,0 +1,39 @@
+module alu_v2(a, b, sel, out, carry, parity, zero);
+  input [3:0] a, b;
+  input [1:0] sel;
+  output [3:0] out;
+  output carry, parity, zero;
+  wire [3:0] and_r, xor_r, sum, alt;
+  wire c1, c2, c3;
+
+  assign and_r[0] = ~(~a[0] | ~b[0]);
+  assign and_r[1] = ~(~a[1] | ~b[1]);
+  assign and_r[2] = ~(~a[2] | ~b[2]);
+  assign and_r[3] = ~(~a[3] | ~b[3]);
+
+  assign xor_r[0] = (a[0] & ~b[0]) | (~a[0] & b[0]);
+  assign xor_r[1] = (a[1] & ~b[1]) | (~a[1] & b[1]);
+  assign xor_r[2] = (a[2] & ~b[2]) | (~a[2] & b[2]);
+  assign xor_r[3] = (a[3] & ~b[3]) | (~a[3] & b[3]);
+
+  assign sum[0] = xor_r[0];
+  assign c1 = and_r[0];
+  assign sum[1] = xor_r[1] ^ c1;
+  assign c2 = (a[1] & b[1]) | (c1 & (a[1] ^ b[1]));
+  assign sum[2] = xor_r[2] ^ c2;
+  assign c3 = (a[2] & b[2]) | (c2 & (a[2] ^ b[2]));
+  assign sum[3] = xor_r[3] ^ c3;
+  assign carry = (a[3] & b[3]) | (c3 & (a[3] ^ b[3]));
+
+  assign alt[0] = ~a[0];
+  assign alt[1] = ~a[1];
+  assign alt[2] = ~a[2];
+  assign alt[3] = ~a[3];
+
+  assign out[0] = (~sel[1] & ~sel[0] & and_r[0]) | (~sel[1] & sel[0] & xor_r[0]) | (sel[1] & ~sel[0] & sum[0]) | (sel[1] & sel[0] & alt[0]);
+  assign out[1] = (~sel[1] & ~sel[0] & and_r[1]) | (~sel[1] & sel[0] & xor_r[1]) | (sel[1] & ~sel[0] & sum[1]) | (sel[1] & sel[0] & alt[1]);
+  assign out[2] = (~sel[1] & ~sel[0] & and_r[2]) | (~sel[1] & sel[0] & xor_r[2]) | (sel[1] & ~sel[0] & sum[2]) | (sel[1] & sel[0] & alt[2]);
+  assign out[3] = (~sel[1] & ~sel[0] & and_r[3]) | (~sel[1] & sel[0] & xor_r[3]) | (sel[1] & ~sel[0] & sum[3]) | (sel[1] & sel[0] & alt[3]);
+  assign parity = out[0] ^ out[1] ^ out[2] ^ out[3];
+  assign zero = ~(out[0] | out[1] | out[2] | out[3]);
+endmodule
