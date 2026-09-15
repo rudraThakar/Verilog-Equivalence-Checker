@@ -4,11 +4,6 @@ This is a combinational equivalence checker for Verilog designs.
 
 Yosys is used as the Verilog frontend, because writing a correct Verilog parser from scratch is not the main point of this assignment. The actual equivalence flow is implemented in this project: loading the JSON netlist, building the miter, generating CNF, running SAT, and showing counterexamples.
 
-This project attempts **problem C** from the assignment. There is also a small BDD backend kept for learning/ROBDD demonstration, but the main backend is SAT-based.
-
-Team members:
-Rudra Thakar (B23EE1100)
-Kartik Gehlot (B23EE1088)
 
 ## What Are We Doing?
 
@@ -89,16 +84,6 @@ The flow is:
    If SAT says **UNSAT**, there is no possible input where outputs differ, so the designs are equivalent.
 
    If SAT says **SAT**, the solver gives us a real input combination that breaks equivalence. That is printed as the counterexample.
-
-## AI Usage:
-
-- There are 2 SAT solving Algos: DPLL and CDCL. 
-- DPLL solver is in-house, while the CDCL solver is the open-source PySAT CDCL solver. The CDCL solver was required because the DPLL solver took too much time for larger circuits like 64 bit adders.
-
-- The examples have been looked from internet.
-- The parser was the same that was created back in the course of ML in VLSI CAD 
-- There is also an optional BDD flow. This flow has been done using AI, only for learning purpose. The parser is used in this BDD flow only, not in the main SAT checker (it uses Yosys)
-- Documentation is mainly done using AI.
 
 
 ## Features
