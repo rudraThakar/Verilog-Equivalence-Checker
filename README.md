@@ -1,132 +1,185 @@
 # Verilog Equivalence Checker
 
-This is a combinational equivalence checker for Verilog designs.
+A SAT-based combinational equivalence checker for Verilog designs.
 
-Yosys is used as the Verilog frontend, because writing a correct Verilog parser from scratch is not the main point of this assignment. The actual equivalence flow is implemented in this project: loading the JSON netlist, building the miter, generating CNF, running SAT, and showing counterexamples.
+This project compares two implementations of the same combinational circuit and determines whether they produce identical outputs for every possible input assignment. It uses Yosys as the Verilog frontend and implements the equivalence-checking flow in Python: netlist loading, miter construction, CNF generation, SAT solving, and counterexample reporting.
 
+The checker was built for Problem C of the course assignment. The primary backend is SAT-based; an educational ROBDD backend is also included for smaller examples.
 
-## What Are We Doing?
+## What It Does
 
-We take two versions of the same combinational circuit:
-
-```text
-golden.v   -> the original/reference design
-revised.v  -> the changed/optimized design
-```
-
-Then we ask one question:
+Given two Verilog files:
 
 ```text
-Is there any input combination where the two designs give different outputs?
+golden.v   -> reference implementation
+revised.v  -> optimized, refactored, or modified implementation
 ```
 
-If such an input exists, the designs are **not equivalent**. If no such input exists, the designs are **equivalent**.
+the tool answers:
 
-The flow is:
+```text
+Is there any input combination where the two designs produce different outputs?
+```
 
-1. **Yosys reads the Verilog**
-
-   Verilog has many syntax rules and edge cases, so we use Yosys for parsing, elaboration, flattening, and converting the circuit into a simple gate-level JSON netlist.
-
-   Yosys gives us gates like:
-
-   ```text
-   AND, OR, XOR, NOT
-   ```
-
-   But Yosys is not doing the equivalence check for us.
-
-2. **We load the Yosys JSON**
-
-   Our code converts the JSON into our own internal netlist model with inputs, outputs, wires, and gates.
-
-3. **We connect both circuits to the same inputs**
-
-   For example, if both designs have `a[0]`, then:
-
-   ```text
-   golden.a[0] == revised.a[0]
-   ```
-
-   This means both circuits are tested under the exact same input combination.
-
-4. **We build a miter**
-
-   A miter is a standard equivalence-checking circuit. For every output bit, we XOR the two designs:
-
-   ```text
-   diff[0] = golden.out[0] XOR revised.out[0]
-   diff[1] = golden.out[1] XOR revised.out[1]
-   ```
-
-   If any `diff` bit becomes `1`, that means at least one output is different.
-
-5. **We convert the miter to CNF**
-
-   SAT solvers need Boolean formulas in CNF format. So we convert every gate into CNF clauses using Tseitin encoding.
-
-   Example idea:
-
-   ```text
-   y = a AND b
-   ```
-
-   becomes a few CNF clauses that force `y` to behave exactly like `a AND b`.
-
-6. **We run SAT**
-
-   Finally, we ask the SAT solver:
-
-   ```text
-   Can any output difference become 1?
-   ```
-
-   If SAT says **UNSAT**, there is no possible input where outputs differ, so the designs are equivalent.
-
-   If SAT says **SAT**, the solver gives us a real input combination that breaks equivalence. That is printed as the counterexample.
-
+If such an input exists, the designs are reported as **not equivalent**, and the tool prints a concrete counterexample. If no such input exists, the designs are reported as **equivalent**.
 
 ## Features
 
-- Uses Yosys to parse, elaborate, flatten, optimize, and emit normalized gate-level JSON.
-- Implements its own internal netlist model from Yosys JSON.
-- Builds a SAT miter across matching output bits.
-- Encodes gates and output differences into CNF using Tseitin constraints.
-- Runs PySAT/Glucose3, an open-source CDCL SAT solver, with a small built-in DPLL solver as fallback.
-- Prints concrete counterexamples for non-equivalent outputs.
-- Includes medium-to-large tests for ALU-style logic, a 4x4 multiplier, and a 64-bit adder.
+- Verilog frontend powered by Yosys.
+- Gate-level netlist extraction from Yosys JSON.
+- SAT miter construction across matching output bits.
+- Tseitin-style CNF encoding for `AND`, `OR`, `XOR`, and `NOT` gates.
+- PySAT/Glucose3 CDCL solver support for scalable checks.
+- Built-in DPLL solver for small examples and demonstration.
+- Counterexample generation for failing equivalence checks.
+- Optional ROBDD backend for learning and comparison.
+- Example circuits covering ALUs, multipliers, and 64-bit adders.
 
-## Quick Start
+## Architecture
 
-Install Yosys first if it is not already available on your machine.
+```text
+Verilog design A       Verilog design B
+       |                      |
+       v                      v
+    Yosys                  Yosys
+       |                      |
+       v                      v
+ Gate-level JSON        Gate-level JSON
+       |                      |
+       +----------+-----------+
+                  v
+          Internal netlists
+                  |
+                  v
+             SAT miter
+                  |
+                  v
+             CNF formula
+                  |
+                  v
+           SAT solver result
+```
+
+The project uses Yosys only as the frontend. Yosys parses, elaborates, flattens, optimizes, and lowers Verilog into a normalized gate-level JSON representation. The actual equivalence logic is implemented in this repository.
+
+Important modules:
+
+```text
+src/veqcheck/yosys_frontend.py   Runs Yosys and emits JSON
+src/veqcheck/netlist.py          Loads Yosys JSON into a compact netlist model
+src/veqcheck/sat_equivalence.py  Builds the miter and drives the SAT flow
+src/veqcheck/cnf.py              Encodes gates as CNF clauses
+src/veqcheck/sat.py              Runs Glucose3 or the in-house DPLL solver
+src/veqcheck/bdd.py              Educational ROBDD implementation
+src/veqcheck/cli.py              Command-line interface
+```
+
+## How The SAT Check Works
+
+For each matching input port, the two designs are constrained to receive the same value.
+
+For each matching output bit, the checker creates a difference signal:
+
+```text
+diff[i] = golden.out[i] XOR revised.out[i]
+```
+
+Then it asks the SAT solver whether any output difference can become true:
+
+```text
+diff[0] OR diff[1] OR ... OR diff[n] = 1
+```
+
+The result is interpreted as:
+
+```text
+SAT   -> a mismatching input exists -> NOT EQUIVALENT
+UNSAT -> no mismatch is possible    -> EQUIVALENT
+```
+
+For example, if one design computes `y = a & b` and another computes `y = ~(~a | ~b)`, the output XOR can never become `1`, so the miter formula is UNSAT and the designs are equivalent.
+
+## CNF Encoding
+
+SAT solvers operate on CNF formulas, so each gate is translated into clauses.
+
+For example:
+
+```text
+y = a AND b
+```
+
+is encoded as:
+
+```text
+(-a OR -b OR y)
+( a OR -y)
+( b OR -y)
+```
+
+Together, these clauses force `y` to be true exactly when both `a` and `b` are true. Similar encodings are implemented for `OR`, `XOR`, and `NOT`.
+
+## Installation
+
+Install Yosys first. On Ubuntu/Debian:
+
+```bash
+sudo apt install yosys
+```
+
+Then install the Python package:
 
 ```bash
 cd verilog-equivalence-checker
-
 python3 -m pip install -e ".[dev]"
-python3 -m pytest
-PYTHONPATH=src python3 -m veqcheck examples/alu_v1.v examples/alu_v2.v
-PYTHONPATH=src python3 -m veqcheck examples/alu_v1.v examples/alu_buggy.v
-PYTHONPATH=src python3 -m veqcheck examples/multiplier_array_v1.v examples/multiplier_expr_v2.v
-PYTHONPATH=src python3 -m veqcheck examples/multiplier_array_v1.v examples/multiplier_buggy.v
-PYTHONPATH=src python3 -m veqcheck examples/adder64_ripple_v1.v examples/adder64_behavioral_v2.v
-PYTHONPATH=src python3 -m veqcheck examples/adder64_ripple_v1.v examples/adder64_buggy.v
 ```
 
-Or use the bundled developer commands:
+The project requires Python 3.10 or newer.
+
+## Usage
+
+Run the checker with:
 
 ```bash
-make test
-make demo
+veqcheck <golden.v> <revised.v>
 ```
 
-After installing the project, the CLI command is also available directly:
+Example:
 
 ```bash
 veqcheck examples/alu_v1.v examples/alu_v2.v
 ```
 
-## Choosing The SAT Solver
+Without installing the console script, run it directly from source:
+
+```bash
+PYTHONPATH=src python3 -m veqcheck examples/alu_v1.v examples/alu_v2.v
+```
+
+Expected output for an equivalent pair:
+
+```text
+EQUIVALENT
+Backend: Yosys frontend + project SAT miter
+SAT solver: glucose
+Compared outputs: carry, out[0], out[1], out[2], out[3], parity, zero
+Gates encoded: 159
+CNF: 197 variables, 541 clauses
+```
+
+Expected output for a mismatch:
+
+```text
+NOT EQUIVALENT
+Backend: Yosys frontend + project SAT miter
+SAT solver: glucose
+Output out[2] differs.
+Counterexample:
+  a[0] = 0
+  ...
+```
+
+## Solver Selection
 
 By default, the SAT backend uses:
 
@@ -134,172 +187,99 @@ By default, the SAT backend uses:
 --solver auto
 ```
 
-In `auto` mode, the checker tries PySAT/Glucose3 first. That is the CDCL solver, and this is what we use for larger circuits like the 64-bit adder.
+In auto mode, the checker tries PySAT/Glucose3 first and falls back to the built-in DPLL solver if PySAT is unavailable.
 
-If we want to specifically run our own DPLL solver, use:
-
-```bash
-PYTHONPATH=src python3 -m veqcheck --solver dpll examples/alu_v1.v examples/alu_buggy.v
-```
-
-This is useful for demo/explanation because it shows that we have an in-house SAT algorithm too. But practically, run DPLL only on smaller examples like the buggy ALU or small mismatch cases. Large equivalent proofs, especially the 64-bit adder, are much better handled by Glucose/CDCL.
-
-To force the open-source CDCL solver:
+Force Glucose3:
 
 ```bash
 PYTHONPATH=src python3 -m veqcheck --solver glucose examples/adder64_ripple_v1.v examples/adder64_behavioral_v2.v
 ```
 
-## Test Circuits
+Force the in-house DPLL solver:
 
-The project currently keeps three circuit families in the automated tests: one ALU, one multiplier, and one 64-bit adder. These are common enough to make sense for a digital design assignment, but they are still large enough to actually exercise the equivalence checker.
+```bash
+PYTHONPATH=src python3 -m veqcheck --solver dpll examples/alu_v1.v examples/alu_buggy.v
+```
 
-### ALU Tests
+DPLL is useful for explanation and small examples. For larger circuits, especially equivalent 64-bit arithmetic designs, the CDCL solver is strongly preferred.
 
-Correct pair:
+## BDD Backend
+
+The optional BDD backend can be selected with:
+
+```bash
+PYTHONPATH=src python3 -m veqcheck --backend bdd examples/alu_v1.v examples/alu_v2.v
+```
+
+This backend uses the repository's simple Verilog parser and ROBDD implementation. It is included mainly to demonstrate canonical Boolean representation and counterexample extraction. The SAT backend is the main implementation path.
+
+## Example Circuits
+
+The `examples/` directory contains equivalent and intentionally buggy design pairs.
 
 ```text
 examples/alu_v1.v
 examples/alu_v2.v
-```
-
-Both implement the same 4-bit combinational ALU behavior, but the internal logic is written differently. For example, some gates are rewritten using De Morgan style expressions, XOR is expanded in places, and the muxing structure is different. The checker should report:
-
-```text
-EQUIVALENT
-```
-
-Buggy pair:
-
-```text
-examples/alu_v1.v
 examples/alu_buggy.v
-```
 
-`alu_buggy.v` has an intentional error in one alternate-operation path. The checker should report:
-
-```text
-NOT EQUIVALENT
-```
-
-It also prints the input values that expose the bug. That counterexample is important because it shows the tool is not only saying "fail"; it is giving a concrete test vector.
-
-### Multiplier Tests
-
-Correct pair:
-
-```text
 examples/multiplier_array_v1.v
 examples/multiplier_expr_v2.v
-```
-
-Both implement the same 4x4 unsigned multiplier. The first one is written as a structural partial-product/adder network. The second one is written using shifted partial rows and `+` operators. Yosys lowers both into gates, and then our SAT miter checks whether the final `product[7:0]` bits can ever differ.
-
-The checker should report:
-
-```text
-EQUIVALENT
-```
-
-Buggy pair:
-
-```text
-examples/multiplier_array_v1.v
 examples/multiplier_buggy.v
-```
 
-`multiplier_buggy.v` has an intentional partial-product mistake. This is a realistic type of bug because one wrong bit in a multiplier array can pass many casual tests but still fail for specific input combinations.
-
-The checker should report:
-
-```text
-NOT EQUIVALENT
-```
-
-Again, the counterexample tells exactly which `a` and `b` values make the product wrong.
-
-### 64-Bit Adder Tests
-
-Correct pair:
-
-```text
 examples/adder64_ripple_v1.v
 examples/adder64_behavioral_v2.v
-```
-
-Both implement the same 64-bit adder with carry-in and carry-out. The first one is a structural ripple-carry adder built from a `full_adder` module and a `generate` loop. The second one is the normal behavioral Verilog style:
-
-```text
-{cout, sum} = a + b + cin
-```
-
-This is much better than a 4-bit adder test because it creates a real carry chain and also checks that the frontend can handle module instances, generate loops, and wide arithmetic.
-
-The checker should report:
-
-```text
-EQUIVALENT
-```
-
-Buggy pair:
-
-```text
-examples/adder64_ripple_v1.v
 examples/adder64_buggy.v
 ```
 
-`adder64_buggy.v` intentionally breaks the carry propagation at the boundary between bit 31 and bit 32. This is a very common class of arithmetic bug: most lower bits may still look correct, but higher bits fail when a carry should cross that boundary.
+Covered cases:
 
-The checker should report:
+- A 4-bit ALU with equivalent rewritten logic and an intentional operation-path bug.
+- A 4x4 unsigned multiplier comparing structural and expression-based implementations.
+- A 64-bit adder comparing ripple-carry and behavioral implementations.
+- A 64-bit adder bug where carry propagation is broken around bit 32.
 
-```text
-NOT EQUIVALENT
+## Development
+
+Run the test suite:
+
+```bash
+make test
 ```
 
-The counterexample shows input values where the missing carry changes the final sum or carry-out.
+Run the demonstration set:
 
-## Why This Shows The Checker Works
-
-The correct pairs are not textually identical. They are written with different internal structures, so a simple file diff or signal-name comparison would not prove anything.
-
-The checker works because it compares behavior, not code style:
-
-1. Same input ports are tied together.
-2. Both designs are encoded into one SAT problem.
-3. Output bits are XORed against each other.
-4. SAT is asked whether any output difference is possible.
-
-So:
-
-```text
-UNSAT -> no possible mismatch -> equivalent
-SAT   -> mismatch exists      -> not equivalent
+```bash
+make demo
 ```
 
-That is the main correctness idea of the project.
+Run a quick equivalence check:
 
-## Example Output
-
-```text
-EQUIVALENT
-Backend: Yosys frontend + project SAT miter
-Compared outputs: carry, out[0], out[1], out[2], out[3], parity, zero
-Gates encoded: 159
-CNF: 197 variables, 541 clauses
+```bash
+make check
 ```
 
-For a mismatch:
+The automated tests exercise both the educational BDD path and the main SAT path.
 
-```text
-NOT EQUIVALENT
-Output out[2] differs.
-Counterexample:
-  a[0] = 0
-  ...
-```
+## Scope And Limitations
 
-## Scope
+- The main backend is intended for combinational designs.
+- Input port names and widths must match between the two designs.
+- Only common output ports are compared.
+- The current JSON loader accepts the primitive gate types produced by the Yosys flow used here: `$_NOT_`, `$_AND_`, `$_OR_`, and `$_XOR_`.
+- Sequential equivalence checking is outside the scope of this implementation.
 
-The default SAT backend supports the combinational Verilog subset that Yosys can lower to simple gates through this flow.
+## Project Context
 
-The optional BDD backend can be invoked with `--backend bdd`; it uses the small parser in this repository and is mainly included to demonstrate ROBDD construction.
+This repository was developed for a digital logic / VLSI CAD assignment.
+
+Team members:
+
+- Rudra Thakar, B23EE1100
+- Kartik Gehlot, B23EE1088
+
+Implementation notes:
+
+- Yosys is used as the Verilog frontend.
+- The SAT miter, CNF generation, DPLL solver, and result reporting are implemented in this project.
+- PySAT/Glucose3 is used as the practical CDCL solver for larger circuits.
+- The BDD backend is retained as a learning-oriented alternative.
