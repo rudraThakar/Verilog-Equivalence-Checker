@@ -266,14 +266,7 @@ The automated tests exercise both the educational BDD path and the main SAT path
 - The current JSON loader accepts the primitive gate types produced by the Yosys flow used here: `$_NOT_`, `$_AND_`, `$_OR_`, and `$_XOR_`.
 - Sequential equivalence checking is outside the scope of this implementation.
 
-## Project Context
 
-This repository was developed for a digital logic / VLSI CAD assignment.
-
-Team members:
-
-- Rudra Thakar, B23EE1100
-- Kartik Gehlot, B23EE1088
 
 Implementation notes:
 
