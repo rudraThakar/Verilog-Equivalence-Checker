@@ -4,8 +4,6 @@ A SAT-based combinational equivalence checker for Verilog designs.
 
 This project compares two implementations of the same combinational circuit and determines whether they produce identical outputs for every possible input assignment. It uses Yosys as the Verilog frontend and implements the equivalence-checking flow in Python: netlist loading, miter construction, CNF generation, SAT solving, and counterexample reporting.
 
-The checker was built for Problem C of the course assignment. The primary backend is SAT-based; an educational ROBDD backend is also included for smaller examples.
-
 ## What It Does
 
 Given two Verilog files:
